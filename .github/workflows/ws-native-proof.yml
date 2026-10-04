@@ -1,0 +1,47 @@
+name: WS original native stream proof
+on:
+  push:
+    branches: [codex/validate-stream-final-original]
+permissions:
+  contents: read
+jobs:
+  original:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['10', '24']
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Install unchanged development manifest with current tooling
+        run: |
+          node --version
+          npm --version
+          npm install
+          npm ls --depth=0
+          sha256sum package.json package-lock.json lib/stream.js
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Verify original source and native regression RED
+        run: |
+          node --version
+          test "$(git hash-object lib/stream.js)" = "$(git rev-parse 297202cdae9b0590629821373b3b679c407f3431:lib/stream.js)"
+          git hash-object lib/stream.js
+          node -e "console.log(require.resolve('./lib/stream')); console.log(require.resolve('mocha/package.json')); console.log(require('mocha/package.json').version); console.log(require('nyc/package.json').version)"
+          set +e
+          node node_modules/mocha/bin/mocha --reporter spec --throw-deprecation test/stream-finalization-probe.test.js > /tmp/ws-red.log 2>&1
+          result=$?
+          set -e
+          cat /tmp/ws-red.log
+          echo "ORIGINAL_PROBE_EXIT=$result"
+          test "$result" -ne 0
+          grep -q '2 passing' /tmp/ws-red.log
+          grep -q '2 failing' /tmp/ws-red.log
+          grep -q 'closed WebSocket must not leave stream finalization pending' /tmp/ws-red.log
+          test "$(git hash-object lib/stream.js)" = "$(git rev-parse 297202cdae9b0590629821373b3b679c407f3431:lib/stream.js)"
