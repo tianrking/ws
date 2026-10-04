@@ -1,13 +1,18 @@
 name: WS exact native stream quality
 on:
-  push:
-    branches: [codex/validate-stream-final-original]
+  workflow_dispatch:
+    inputs:
+      scope:
+        type: choice
+        options: [all, native, quality]
+        default: all
 permissions:
   contents: read
 env:
   FORMAL_SHA: 4a404b8a2f6a4cfc5997cbb51a64243230d3d3d9
 jobs:
   native:
+    if: inputs.scope != 'quality'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -37,7 +42,7 @@ jobs:
           npm install
           npm ls --depth=0
           npm ls --all --json > /tmp/ws-dependencies.json
-          sha256sum package.json /tmp/ws-dependencies.json
+          node -e "const fs=require('fs'),crypto=require('crypto'); for(const path of process.argv.slice(1))console.log(crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex'),path)" package.json /tmp/ws-dependencies.json
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
@@ -47,7 +52,7 @@ jobs:
           node --version
           git log -1 --format='%H %an <%ae> %cn <%ce>'
           git hash-object lib/stream.js test/create-websocket-stream.test.js
-          sha256sum lib/stream.js test/create-websocket-stream.test.js package.json
+          node -e "const fs=require('fs'),crypto=require('crypto'); for(const path of process.argv.slice(1))console.log(crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex'),path)" lib/stream.js test/create-websocket-stream.test.js package.json
           node -e "require('.'); console.log(require.resolve('./lib/stream')); console.log(require('mocha/package.json').version, require('nyc/package.json').version); console.log(Object.keys(require.cache).filter(p => p.endsWith('.node'))); console.log(require('./lib/buffer-util').mask.toString())"
       - name: Focused new regressions and same original probe GREEN
         run: |
@@ -88,10 +93,11 @@ jobs:
         if: always()
         run: |
           git hash-object lib/stream.js test/create-websocket-stream.test.js
-          sha256sum lib/stream.js test/create-websocket-stream.test.js package.json
+          node -e "const fs=require('fs'),crypto=require('crypto'); for(const path of process.argv.slice(1))console.log(crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex'),path)" lib/stream.js test/create-websocket-stream.test.js package.json
           git status --porcelain
           test -z "$(git status --porcelain)"
   quality:
+    if: inputs.scope != 'native'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -103,7 +109,14 @@ jobs:
           node-version: '24'
       - run: npm install
       - name: Complete repository ESLint and Prettier checks
-        run: npm run lint
+        run: |
+          test "$(git rev-parse HEAD)" = "$FORMAL_SHA"
+          node --version
+          npm ls --depth=0
+          git hash-object lib/stream.js test/create-websocket-stream.test.js
+          npm run lint
+          test -z "$(git status --porcelain)"
+          git hash-object lib/stream.js test/create-websocket-stream.test.js
       - name: Preserve formatter repairs from failed provisional lint
         if: failure()
         run: |
