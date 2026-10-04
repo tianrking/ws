@@ -1,5 +1,7 @@
 name: WS Node26 unchanged-tool compatibility
 on:
+  push:
+    branches: [codex/validate-stream-final-original]
   workflow_dispatch:
 permissions:
   contents: read
