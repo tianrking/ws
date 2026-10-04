@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 env:
-  FORMAL_SHA: 4a404b8a2f6a4cfc5997cbb51a64243230d3d3d9
+  FORMAL_SHA: 51510804a47dfc010983bc802706f5bb0d2dd599
 jobs:
   native:
     if: inputs.scope != 'quality'
@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 4a404b8a2f6a4cfc5997cbb51a64243230d3d3d9
+          ref: 51510804a47dfc010983bc802706f5bb0d2dd599
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
@@ -102,7 +102,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 4a404b8a2f6a4cfc5997cbb51a64243230d3d3d9
+          ref: 51510804a47dfc010983bc802706f5bb0d2dd599
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
@@ -129,3 +129,4 @@ jobs:
           path: |
             lib/stream.js
             test/create-websocket-stream.test.js
+
