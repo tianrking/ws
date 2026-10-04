@@ -23,62 +23,61 @@ jobs:
           npm ls --depth=0
           npm ls --all --json > /tmp/ws-node26-dependencies.json
           git worktree add --detach /tmp/ws-node26-baseline 297202cdae9b0590629821373b3b679c407f3431
-          ln -s "$PWD/node_modules" /tmp/ws-node26-baseline/node_modules
+          cp -R node_modules /tmp/ws-node26-baseline/node_modules
           node -e "const fs=require('fs'),crypto=require('crypto');for(const p of process.argv.slice(1))console.log(crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'),p)" package.json /tmp/ws-node26-dependencies.json
       - uses: actions/setup-node@v7
         with:
           node-version: '26'
-      - name: Reproduce baseline default CLI error and verify official compatibility options
+      - name: Prove original direct CLI and integration limitation
         run: |
           node --version
           node -e "console.log(require.resolve('yargs/yargs'));console.log(require('yargs/package.json').version);console.log(require('fs').readFileSync(require.resolve('yargs/yargs'),'utf8'))"
           set +e
-          (cd /tmp/ws-node26-baseline && npm test) > /tmp/ws-node26-original-default.log 2>&1
+          (cd /tmp/ws-node26-baseline && node node_modules/mocha/bin/mocha --version) > /tmp/ws-node26-original-default.log 2>&1
           baseline_code=$?
-          node --no-experimental-detect-module node_modules/mocha/bin/mocha --version > /tmp/ws-node26-detect.log 2>&1
-          detect_code=$?
-          node --no-require-module node_modules/mocha/bin/mocha --version > /tmp/ws-node26-require.log 2>&1
-          require_code=$?
+          (cd /tmp/ws-node26-baseline && npm run integration) > /tmp/ws-node26-original-integration.log 2>&1
+          integration_code=$?
           set -e
-          cat /tmp/ws-node26-original-default.log /tmp/ws-node26-detect.log /tmp/ws-node26-require.log
-          echo "BASELINE_DEFAULT_EXIT=$baseline_code DETECT_FLAG_EXIT=$detect_code REQUIRE_FLAG_EXIT=$require_code"
+          cat /tmp/ws-node26-original-default.log /tmp/ws-node26-original-integration.log
+          echo "BASELINE_DIRECT_EXIT=$baseline_code BASELINE_INTEGRATION_EXIT=$integration_code"
           test "$baseline_code" -ne 0
+          test "$integration_code" -ne 0
           grep -F 'require is not defined in ES module scope' /tmp/ws-node26-original-default.log
-          if test "$detect_code" -eq 0; then
-            echo 'NODE_OPTIONS=--no-experimental-detect-module' >> "$GITHUB_ENV"
-          elif test "$require_code" -eq 0; then
-            echo 'NODE_OPTIONS=--no-require-module' >> "$GITHUB_ENV"
-          else
-            exit 1
-          fi
-      - name: Original full suite and integration using same supported option
+          grep -F 'require is not defined in ES module scope' /tmp/ws-node26-original-integration.log
+      - name: Original literal full suite and covered real integration
         working-directory: /tmp/ws-node26-baseline
         run: |
-          echo "NODE_OPTIONS=$NODE_OPTIONS"
           git rev-parse HEAD
           git hash-object lib/stream.js test/create-websocket-stream.test.js
           npm test
-          npm run integration
+          node node_modules/nyc/bin/nyc.js --reporter=text node_modules/mocha/bin/mocha --throw-deprecation test/*.integration.js
           git hash-object lib/stream.js test/create-websocket-stream.test.js
           test -z "$(git status --porcelain)"
       - name: Exact formal source and real module provenance
         run: |
           test "$(git rev-parse HEAD)" = '51510804a47dfc010983bc802706f5bb0d2dd599'
-          echo "NODE_OPTIONS=$NODE_OPTIONS"
           git hash-object lib/stream.js test/create-websocket-stream.test.js
           node -e "const fs=require('fs'),crypto=require('crypto');for(const p of process.argv.slice(1))console.log(crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'),p)" lib/stream.js test/create-websocket-stream.test.js package.json
           node -e "require('.');console.log(require.resolve('./lib/stream'));console.log(require('mocha/package.json').version,require('nyc/package.json').version);console.log(Object.keys(require.cache).filter(p=>p.endsWith('.node')))"
       - name: Exact six native regressions and original four probes GREEN
         run: |
-          node node_modules/mocha/bin/mocha --throw-deprecation test/create-websocket-stream.test.js --grep 'underlying socket is terminated'
+          npm test -- --grep 'underlying socket is terminated'
           git show 5b47a18c9815eaf218d420952c7dd50a0f9528c9:test/stream-finalization-probe.test.js > /tmp/ws-probe.js
           cp /tmp/ws-probe.js test/stream-finalization-probe.test.js
-          node node_modules/mocha/bin/mocha --throw-deprecation test/stream-finalization-probe.test.js
+          node node_modules/nyc/bin/nyc.js --reporter=text node_modules/mocha/bin/mocha --throw-deprecation test/stream-finalization-probe.test.js
           rm test/stream-finalization-probe.test.js
       - name: Exact complete coverage and actual echo integration
         run: |
           npm test
-          npm run integration
+          set +e
+          npm run integration > /tmp/ws-node26-formal-integration.log 2>&1
+          integration_code=$?
+          set -e
+          cat /tmp/ws-node26-formal-integration.log
+          echo "FORMAL_LITERAL_INTEGRATION_EXIT=$integration_code"
+          test "$integration_code" -ne 0
+          grep -F 'require is not defined in ES module scope' /tmp/ws-node26-formal-integration.log
+          node node_modules/nyc/bin/nyc.js --reporter=text node_modules/mocha/bin/mocha --throw-deprecation test/*.integration.js
       - name: Source hashes after native checks
         if: always()
         run: |
