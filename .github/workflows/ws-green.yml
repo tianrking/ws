@@ -1,0 +1,118 @@
+name: WS exact native stream quality
+on:
+  push:
+    branches: [codex/validate-stream-final-original]
+permissions:
+  contents: read
+env:
+  FORMAL_SHA: 4a404b8a2f6a4cfc5997cbb51a64243230d3d3d9
+jobs:
+  native:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {node: '10', os: ubuntu-24.04}
+          - {node: '22', os: ubuntu-24.04}
+          - {node: '24', os: ubuntu-24.04}
+          - {node: '26', os: ubuntu-24.04}
+          - {node: '24', os: windows-latest}
+          - {node: '24', os: macos-latest}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 4a404b8a2f6a4cfc5997cbb51a64243230d3d3d9
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Install unchanged development manifest using current tooling
+        run: |
+          npm --version
+          npm install
+          npm ls --depth=0
+          npm ls --all --json > /tmp/ws-dependencies.json
+          sha256sum package.json /tmp/ws-dependencies.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Verify exact source and actual native module imports
+        run: |
+          test "$(git rev-parse HEAD)" = "$FORMAL_SHA"
+          node --version
+          git log -1 --format='%H %an <%ae> %cn <%ce>'
+          git hash-object lib/stream.js test/create-websocket-stream.test.js
+          sha256sum lib/stream.js test/create-websocket-stream.test.js package.json
+          node -e "require('.'); console.log(require.resolve('./lib/stream')); console.log(require('mocha/package.json').version, require('nyc/package.json').version); console.log(Object.keys(require.cache).filter(p => p.endsWith('.node'))); console.log(require('./lib/buffer-util').mask.toString())"
+      - name: Focused new regressions and same original probe GREEN
+        run: |
+          node node_modules/mocha/bin/mocha --throw-deprecation test/create-websocket-stream.test.js --grep 'underlying socket is terminated'
+          git show 5b47a18c9815eaf218d420952c7dd50a0f9528c9:test/stream-finalization-probe.test.js > test/stream-finalization-probe.test.js
+          node node_modules/mocha/bin/mocha --throw-deprecation test/stream-finalization-probe.test.js
+          rm test/stream-finalization-probe.test.js
+      - name: Full project tests with nyc coverage
+        run: npm test
+      - name: Full project fallback tests on minimum and current runtimes
+        if: matrix.os == 'ubuntu-24.04' && (matrix.node == '10' || matrix.node == '24')
+        env:
+          WS_NO_BUFFER_UTIL: '1'
+          WS_NO_UTF_8_VALIDATE: '1'
+        run: |
+          node -e "require('.'); console.log(Object.keys(require.cache).filter(p => p.endsWith('.node'))); console.log(require('./lib/buffer-util').mask.toString())"
+          npm test
+      - name: Repository external echo integration and baseline comparison
+        run: |
+          set +e
+          npm run integration > /tmp/ws-integration.log 2>&1
+          integration_code=$?
+          set -e
+          cat /tmp/ws-integration.log
+          echo "FORMAL_INTEGRATION_EXIT=$integration_code"
+          if test "$integration_code" -ne 0; then
+            git worktree add --detach /tmp/ws-integration-baseline 297202cdae9b0590629821373b3b679c407f3431
+            cp -R node_modules /tmp/ws-integration-baseline/node_modules
+            set +e
+            (cd /tmp/ws-integration-baseline && npm run integration) > /tmp/ws-baseline-integration.log 2>&1
+            baseline_code=$?
+            set -e
+            cat /tmp/ws-baseline-integration.log
+            echo "BASELINE_INTEGRATION_EXIT=$baseline_code"
+          fi
+          test "$integration_code" -eq 0
+      - name: Confirm source unchanged after all native checks
+        if: always()
+        run: |
+          git hash-object lib/stream.js test/create-websocket-stream.test.js
+          sha256sum lib/stream.js test/create-websocket-stream.test.js package.json
+          git status --porcelain
+          test -z "$(git status --porcelain)"
+  quality:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 4a404b8a2f6a4cfc5997cbb51a64243230d3d3d9
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - run: npm install
+      - name: Complete repository ESLint and Prettier checks
+        run: npm run lint
+      - name: Preserve formatter repairs from failed provisional lint
+        if: failure()
+        run: |
+          npx eslint lib/stream.js test/create-websocket-stream.test.js --fix
+          git diff -- lib/stream.js test/create-websocket-stream.test.js
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: ws-formatted-source
+          path: |
+            lib/stream.js
+            test/create-websocket-stream.test.js

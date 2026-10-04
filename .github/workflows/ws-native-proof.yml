@@ -1,7 +1,5 @@
 name: WS original native stream proof
-on:
-  push:
-    branches: [codex/validate-stream-final-original]
+on: workflow_dispatch
 permissions:
   contents: read
 jobs:
