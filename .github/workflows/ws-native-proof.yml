@@ -24,7 +24,8 @@ jobs:
           npm --version
           npm install
           npm ls --depth=0
-          sha256sum package.json package-lock.json lib/stream.js
+          npm ls --all --json > /tmp/ws-dependencies.json
+          sha256sum package.json lib/stream.js /tmp/ws-dependencies.json
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
